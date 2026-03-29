@@ -29,8 +29,10 @@ function getUserId(): string {
   return userId;
 }
 
-// 同步数据到云端
+// 同步数据到云端（暂时禁用，避免大量数据导致崩溃）
 async function syncToCloud(cards: FlashCard[], settings: AppSettings) {
+  // 暂时禁用云端同步，等稳定后再开启
+  return;
   if (typeof window === 'undefined') return;
 
   const userId = getUserId();
