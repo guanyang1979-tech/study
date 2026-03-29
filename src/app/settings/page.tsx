@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Moon, Monitor, Volume2, Bell, Database, Trash2, Download, Upload, Sparkles, X, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -23,6 +23,7 @@ const VOICES = [
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { alert, confirm } = useModal();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [settings, setSettings] = useState<AppSettings>({
     theme: 'system',
     ttsEnabled: false,
@@ -345,22 +346,20 @@ export default function SettingsPage() {
                 导出数据
               </Button>
 
-              <label>
-                <input
-                  type="file"
-                  accept=".json"
-                  className="hidden"
-                  onChange={handleImport}
-                />
-                <span className="inline-flex cursor-pointer">
-                  <Button
-                    variant="secondary"
-                    icon={<Upload className="w-4 h-4" />}
-                  >
-                    导入数据
-                  </Button>
-                </span>
-              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={handleImport}
+              />
+              <Button
+                variant="secondary"
+                icon={<Upload className="w-4 h-4" />}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                导入数据
+              </Button>
             </div>
 
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700">

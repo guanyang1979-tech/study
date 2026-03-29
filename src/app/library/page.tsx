@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, ChevronDown, ChevronRight, FileText, Tag, Clock, Download, Upload, Loader2, X, ChevronUp, LayoutList, BookOpen } from 'lucide-react';
 import { getCardsAsync, getCardsByChapter, exportData, importData } from '@/lib/storage';
@@ -13,6 +13,7 @@ type ViewMode = 'chapter' | 'list';
 
 export default function LibraryPage() {
   const { alert } = useModal();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [cards, setCards] = useState<FlashCard[]>([]);
   const [chapters, setChapters] = useState<{ name: string; cards: FlashCard[] }[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,22 +151,20 @@ export default function LibraryPage() {
         <p className="text-slate-500 dark:text-slate-400 mb-4">
           请导入或添加卡片数据
         </p>
-        <label>
-          <input
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={handleImport}
-          />
-          <span className="inline-flex cursor-pointer">
-            <Button
-              variant="secondary"
-              icon={<Upload className="w-4 h-4" />}
-            >
-              导入数据
-            </Button>
-          </span>
-        </label>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={handleImport}
+        />
+        <Button
+          variant="secondary"
+          icon={<Upload className="w-4 h-4" />}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          导入数据
+        </Button>
       </div>
     );
   }
@@ -218,23 +217,21 @@ export default function LibraryPage() {
           >
             导出数据
           </Button>
-          <label>
-            <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleImport}
-            />
-            <span className="inline-flex cursor-pointer">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<Upload className="w-4 h-4" />}
-              >
-                导入数据
-              </Button>
-            </span>
-          </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Upload className="w-4 h-4" />}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            导入数据
+          </Button>
         </div>
       </div>
 
