@@ -80,20 +80,28 @@ export async function getCardsAsync(): Promise<FlashCard[]> {
   if (stored) {
     try {
       cards = JSON.parse(stored);
+      // 如果本地有数据，直接返回
+      return cards;
     } catch {
       cards = initialCards;
     }
-  } else {
-    // 本地没有，尝试从云端获取
+  }
+
+  // 本地没有，尝试从云端获取
+  try {
     const cloudData = await loadFromCloud();
-    if (cloudData?.cards) {
+    if (cloudData?.cards && cloudData.cards.length > 0) {
       cards = cloudData.cards;
       localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
       return cards;
     }
-    cards = initialCards;
-    saveCards(cards);
+  } catch (error) {
+    console.error('从云端加载失败:', error);
   }
+
+  // 使用初始数据
+  cards = initialCards;
+  saveCards(cards).catch(() => {});
   return cards;
 }
 
@@ -105,9 +113,15 @@ export async function saveCards(cards: FlashCard[]): Promise<void> {
   localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
 
   // 同步到云端（从 localStorage 获取当前设置）
-  const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-  const settings = stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
-  await syncToCloud(cards, settings);
+  // 添加错误处理，避免阻塞
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+    const settings = stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
+    await syncToCloud(cards, settings);
+  } catch (error) {
+    console.error('同步到云端失败:', error);
+    // 静默失败，不阻塞用户操作
+  }
 }
 
 /**
@@ -211,7 +225,7 @@ export async function importData(file: File): Promise<void> {
         // 支持两种格式：
         // 1. 完整备份格式：{ cards: [...], settings: {...} }
         // 2. 纯卡片数组格式：[{...}, {...}]
-        let cardsToImport = [];
+        let cardsToImport: FlashCard[] = [];
         if (Array.isArray(data)) {
           // 纯数组格式
           cardsToImport = data;
@@ -219,7 +233,7 @@ export async function importData(file: File): Promise<void> {
           // 完整备份格式
           cardsToImport = data.cards;
           if (data.settings) {
-            await saveSettings(data.settings);
+            await saveSettings(data.settings).catch(() => {});
           }
         }
 
@@ -228,7 +242,7 @@ export async function importData(file: File): Promise<void> {
           const existingCards = await getCardsAsync();
           // 合并卡片（避免重复）
           const existingIds = new Set(existingCards.map((c: FlashCard) => c.id));
-          const newCards = cardsToImport.filter((c: FlashCard) => !existingIds.has(c.id));
+          const newCards = cardsToImport.filter((c: FlashCard) => c.id && !existingIds.has(c.id));
           const mergedCards = [...existingCards, ...newCards];
           await saveCards(mergedCards);
         }
