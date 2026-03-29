@@ -81,29 +81,21 @@ export async function getCardsAsync(): Promise<FlashCard[]> {
 
   if (stored) {
     try {
-      cards = JSON.parse(stored);
-      // 如果本地有数据，直接返回
-      return cards;
-    } catch {
-      cards = initialCards;
+      const parsed = JSON.parse(stored);
+      // 验证数据是数组
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        cards = parsed;
+        return cards; // 直接返回本地数据
+      }
+    } catch (error) {
+      console.error('解析本地数据失败:', error);
+      localStorage.removeItem(STORAGE_KEYS.CARDS); // 清除损坏的数据
     }
-  }
-
-  // 本地没有，尝试从云端获取
-  try {
-    const cloudData = await loadFromCloud();
-    if (cloudData?.cards && cloudData.cards.length > 0) {
-      cards = cloudData.cards;
-      localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
-      return cards;
-    }
-  } catch (error) {
-    console.error('从云端加载失败:', error);
   }
 
   // 使用初始数据
   cards = initialCards;
-  saveCards(cards).catch(() => {});
+  // 不保存到本地，避免循环问题
   return cards;
 }
 
@@ -112,17 +104,12 @@ export async function getCardsAsync(): Promise<FlashCard[]> {
  */
 export async function saveCards(cards: FlashCard[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
 
-  // 同步到云端（从 localStorage 获取当前设置）
-  // 添加错误处理，避免阻塞
+  // 只保存到本地存储，不同步到云端
   try {
-    const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const settings = stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
-    await syncToCloud(cards, settings);
+    localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
   } catch (error) {
-    console.error('同步到云端失败:', error);
-    // 静默失败，不阻塞用户操作
+    console.error('保存卡片失败:', error);
   }
 }
 
@@ -229,8 +216,16 @@ export async function importData(file: File): Promise<void> {
         // 2. 纯卡片数组格式：[{...}, {...}]
         let cardsToImport: FlashCard[] = [];
         if (Array.isArray(data)) {
-          // 纯数组格式
-          cardsToImport = data;
+          // 纯数组格式 - 为缺少 srs 字段的卡片添加默认值
+          cardsToImport = data.map((card: any) => ({
+            ...card,
+            srs: card.srs || {
+              repetition: 0,
+              interval: 0,
+              ease_factor: 2.5,
+              next_review_date: new Date().toISOString()
+            }
+          }));
         } else if (data.cards && Array.isArray(data.cards)) {
           // 完整备份格式
           cardsToImport = data.cards;
