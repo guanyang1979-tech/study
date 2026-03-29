@@ -207,14 +207,35 @@ export async function importData(file: File): Promise<void> {
     reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        if (data.cards) {
-          await saveCards(data.cards);
+
+        // 支持两种格式：
+        // 1. 完整备份格式：{ cards: [...], settings: {...} }
+        // 2. 纯卡片数组格式：[{...}, {...}]
+        let cardsToImport = [];
+        if (Array.isArray(data)) {
+          // 纯数组格式
+          cardsToImport = data;
+        } else if (data.cards && Array.isArray(data.cards)) {
+          // 完整备份格式
+          cardsToImport = data.cards;
+          if (data.settings) {
+            await saveSettings(data.settings);
+          }
         }
-        if (data.settings) {
-          await saveSettings(data.settings);
+
+        if (cardsToImport.length > 0) {
+          // 获取现有卡片
+          const existingCards = await getCardsAsync();
+          // 合并卡片（避免重复）
+          const existingIds = new Set(existingCards.map((c: FlashCard) => c.id));
+          const newCards = cardsToImport.filter((c: FlashCard) => !existingIds.has(c.id));
+          const mergedCards = [...existingCards, ...newCards];
+          await saveCards(mergedCards);
         }
+
         resolve();
-      } catch {
+      } catch (error) {
+        console.error('Import error:', error);
         reject(new Error('Invalid file format'));
       }
     };

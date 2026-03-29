@@ -109,7 +109,9 @@ export default function SettingsPage() {
     if (file) {
       try {
         await importData(file);
-        await alert('导入成功！');
+        await alert('导入成功！共导入了新的卡片');
+        // 刷新页面以更新显示
+        window.location.reload();
       } catch {
         await alert('导入失败，请检查文件格式', 'alert');
       }
