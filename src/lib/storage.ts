@@ -1,10 +1,12 @@
 import { FlashCard, AppSettings } from './types';
 import { initialCards } from '@/data/cards';
+import { supabase } from './supabase';
 
 const STORAGE_KEYS = {
   CARDS: 'zhixi_cards',
   SETTINGS: 'zhixi_settings',
-  STATS: 'zhixi_stats'
+  STATS: 'zhixi_stats',
+  USER_ID: 'zhixi_user_id'
 } as const;
 
 // 默认设置
@@ -16,69 +18,134 @@ const defaultSettings: AppSettings = {
   webhookEnabled: false
 };
 
+// 获取或生成用户ID
+function getUserId(): string {
+  if (typeof window === 'undefined') return 'default';
+  let userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
+  if (!userId) {
+    userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem(STORAGE_KEYS.USER_ID, userId);
+  }
+  return userId;
+}
+
+// 同步数据到云端
+async function syncToCloud(cards: FlashCard[], settings: AppSettings) {
+  if (typeof window === 'undefined') return;
+
+  const userId = getUserId();
+  try {
+    await supabase.from('user_data').upsert({
+      user_id: userId,
+      cards: cards,
+      settings: settings,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+    console.log('数据已同步到云端');
+  } catch (error) {
+    console.error('同步到云端失败:', error);
+  }
+}
+
+// 从云端加载数据
+async function loadFromCloud(): Promise<{ cards?: FlashCard[]; settings?: AppSettings } | null> {
+  if (typeof window === 'undefined') return null;
+
+  const userId = getUserId();
+  try {
+    const { data, error } = await supabase
+      .from('user_data')
+      .select('cards, settings')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) return null;
+    return { cards: data.cards, settings: data.settings };
+  } catch (error) {
+    console.error('从云端加载失败:', error);
+    return null;
+  }
+}
+
 /**
- * 获取所有卡片数据（从 LocalStorage 或使用初始数据）
+ * 获取所有卡片数据（从 LocalStorage 或云端或使用初始数据）
  */
-export function getCards(): FlashCard[] {
+export async function getCardsAsync(): Promise<FlashCard[]> {
   if (typeof window === 'undefined') return initialCards;
 
+  // 先尝试从本地获取
   const stored = localStorage.getItem(STORAGE_KEYS.CARDS);
+  let cards: FlashCard[];
+
   if (stored) {
     try {
-      return JSON.parse(stored);
+      cards = JSON.parse(stored);
     } catch {
-      return initialCards;
+      cards = initialCards;
     }
+  } else {
+    // 本地没有，尝试从云端获取
+    const cloudData = await loadFromCloud();
+    if (cloudData?.cards) {
+      cards = cloudData.cards;
+      localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
+      return cards;
+    }
+    cards = initialCards;
+    saveCards(cards);
   }
-  // 首次使用时保存初始数据
-  saveCards(initialCards);
-  return initialCards;
+  return cards;
 }
 
 /**
  * 保存卡片数据
  */
-export function saveCards(cards: FlashCard[]): void {
+export async function saveCards(cards: FlashCard[]): Promise<void> {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
+
+  // 同步到云端（从 localStorage 获取当前设置）
+  const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+  const settings = stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
+  await syncToCloud(cards, settings);
 }
 
 /**
  * 更新单个卡片
  */
-export function updateCard(cardId: string, updates: Partial<FlashCard>): FlashCard[] {
-  const cards = getCards();
+export async function updateCard(cardId: string, updates: Partial<FlashCard>): Promise<FlashCard[]> {
+  const cards = await getCardsAsync();
   const updatedCards = cards.map(card =>
     card.id === cardId ? { ...card, ...updates } : card
   );
-  saveCards(updatedCards);
+  await saveCards(updatedCards);
   return updatedCards;
 }
 
 /**
  * 添加新卡片
  */
-export function addCard(card: FlashCard): FlashCard[] {
-  const cards = getCards();
+export async function addCard(card: FlashCard): Promise<FlashCard[]> {
+  const cards = await getCardsAsync();
   const newCards = [...cards, card];
-  saveCards(newCards);
+  await saveCards(newCards);
   return newCards;
 }
 
 /**
  * 删除卡片
  */
-export function deleteCard(cardId: string): FlashCard[] {
-  const cards = getCards();
+export async function deleteCard(cardId: string): Promise<FlashCard[]> {
+  const cards = await getCardsAsync();
   const newCards = cards.filter(card => card.id !== cardId);
-  saveCards(newCards);
+  await saveCards(newCards);
   return newCards;
 }
 
 /**
  * 获取应用设置
  */
-export function getSettings(): AppSettings {
+export async function getSettingsAsync(): Promise<AppSettings> {
   if (typeof window === 'undefined') return defaultSettings;
 
   const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -89,23 +156,37 @@ export function getSettings(): AppSettings {
       return defaultSettings;
     }
   }
+
+  // 尝试从云端获取
+  const cloudData = await loadFromCloud();
+  if (cloudData?.settings) {
+    const settings = { ...defaultSettings, ...cloudData.settings };
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    return settings;
+  }
+
   return defaultSettings;
 }
 
 /**
  * 保存应用设置
  */
-export function saveSettings(settings: AppSettings): void {
+export async function saveSettings(settings: AppSettings): Promise<void> {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+
+  // 同步到云端
+  const cards = await getCardsAsync();
+  await syncToCloud(cards, settings);
 }
 
 /**
  * 导出数据为 JSON 文件
  */
-export function exportData(): void {
-  const cards = getCards();
-  const settings = getSettings();
+export async function exportData(): Promise<void> {
+  const cards = await getCardsAsync();
+  const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+  const settings = stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
   const data = { cards, settings, exportDate: new Date().toISOString() };
 
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -120,17 +201,17 @@ export function exportData(): void {
 /**
  * 从 JSON 文件导入数据
  */
-export function importData(file: File): Promise<void> {
+export async function importData(file: File): Promise<void> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
         if (data.cards) {
-          saveCards(data.cards);
+          await saveCards(data.cards);
         }
         if (data.settings) {
-          saveSettings(data.settings);
+          await saveSettings(data.settings);
         }
         resolve();
       } catch {
@@ -145,18 +226,21 @@ export function importData(file: File): Promise<void> {
 /**
  * 重置所有数据
  */
-export function resetData(): void {
+export async function resetData(): Promise<void> {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEYS.CARDS);
   localStorage.removeItem(STORAGE_KEYS.SETTINGS);
   localStorage.removeItem(STORAGE_KEYS.STATS);
+
+  // 同步到云端（删除数据）
+  await syncToCloud([], defaultSettings);
 }
 
 /**
  * 获取按章节分组的卡片
  */
-export function getCardsByChapter(): { name: string; cards: FlashCard[] }[] {
-  const cards = getCards();
+export async function getCardsByChapter(): Promise<{ name: string; cards: FlashCard[] }[]> {
+  const cards = await getCardsAsync();
   const chapterMap = new Map<string, FlashCard[]>();
 
   cards.forEach(card => {

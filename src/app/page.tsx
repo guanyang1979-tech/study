@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { GraduationCap, BookOpen, Clock, Trophy, ArrowRight, Sparkles, Target } from 'lucide-react';
-import { getCards } from '@/lib/storage';
+import { getCardsAsync } from '@/lib/storage';
 import { getDueCards, getStudyStats } from '@/lib/srs';
 import { StatsCard } from '@/components/StatsCard';
 import { Button } from '@/components/Button';
@@ -21,9 +21,10 @@ export default function HomePage() {
   });
 
   useEffect(() => {
-    const allCards = getCards();
-    setCards(allCards);
-    setStats(getStudyStats(allCards));
+    getCardsAsync().then(allCards => {
+      setCards(allCards);
+      setStats(getStudyStats(allCards));
+    });
   }, []);
 
   const dueCards = getDueCards(cards);

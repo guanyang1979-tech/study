@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Moon, Monitor, Volume2, Bell, Database, Trash2, Download, Upload, Sparkles, X, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useModal } from '@/components/Modal';
-import { getSettings, saveSettings, exportData, importData, resetData } from '@/lib/storage';
+import { getSettingsAsync, saveSettings, exportData, importData, resetData } from '@/lib/storage';
 import { Button } from '@/components/Button';
 import { AppSettings } from '@/lib/types';
 
@@ -34,15 +34,16 @@ export default function SettingsPage() {
   const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
-    const loadedSettings = getSettings();
-    setSettings(loadedSettings);
+    getSettingsAsync().then(loadedSettings => {
+      setSettings(loadedSettings);
+    });
   }, []);
 
   // 保存设置
-  const updateSettings = (newSettings: Partial<AppSettings>) => {
+  const updateSettings = async (newSettings: Partial<AppSettings>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
-    saveSettings(updated);
+    await saveSettings(updated);
   };
 
   // 测试 TTS

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, ChevronDown, ChevronRight, FileText, Tag, Clock, Download, Upload, Loader2, X, ChevronUp, LayoutList, BookOpen } from 'lucide-react';
-import { getCards, getCardsByChapter, exportData, importData } from '@/lib/storage';
+import { getCardsAsync, getCardsByChapter, exportData, importData } from '@/lib/storage';
 import { formatDate, getMemoryStatus } from '@/lib/srs';
 import { useModal } from '@/components/Modal';
 import { Button } from '@/components/Button';
@@ -25,10 +25,10 @@ export default function LibraryPage() {
 
   // 使用 useMemo 缓存过滤后的数据
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       try {
-        const allCards = getCards();
-        const chapterData = getCardsByChapter();
+        const allCards = await getCardsAsync();
+        const chapterData = await getCardsByChapter();
         setCards(allCards);
         setChapters(chapterData);
         // 默认展开所有章节
@@ -99,8 +99,8 @@ export default function LibraryPage() {
       try {
         await importData(file);
         // 重新加载数据
-        const allCards = getCards();
-        const chapterData = getCardsByChapter();
+        const allCards = await getCardsAsync();
+        const chapterData = await getCardsByChapter();
         setCards(allCards);
         setChapters(chapterData);
         await alert('导入成功！');

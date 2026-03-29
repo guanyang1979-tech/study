@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Volume2, VolumeX, Trophy, RefreshCw, X, BookOpen, Clock, ChevronLeft } from 'lucide-react';
-import { getCards, updateCard, getSettings, getCardsByChapter } from '@/lib/storage';
+import { getCardsAsync, updateCard, getSettingsAsync, getCardsByChapter } from '@/lib/storage';
 import { getDueCards, calculateNextReview, ReviewRating, getStudyStats } from '@/lib/srs';
 import { StudyCard } from '@/components/StudyCard';
 import { Button } from '@/components/Button';
@@ -21,17 +21,19 @@ export default function StudyPage() {
   const [studyComplete, setStudyComplete] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
-
-  // 获取章节数据
-  const chapters = useMemo(() => getCardsByChapter(), []);
+  const [chapters, setChapters] = useState<{ name: string; cards: FlashCard[] }[]>([]);
 
   useEffect(() => {
-    const cards = getCards();
-    setAllCards(cards);
+    getCardsAsync().then(cards => {
+      setAllCards(cards);
+      // 获取章节数据
+      getCardsByChapter().then(ch => setChapters(ch));
+    });
 
-    const settings = getSettings();
-    setTtsEnabled(settings.ttsEnabled);
-    setTtsVoice(settings.ttsVoice || 'zh-CN');
+    getSettingsAsync().then(settings => {
+      setTtsEnabled(settings.ttsEnabled);
+      setTtsVoice(settings.ttsVoice || 'zh-CN');
+    });
   }, []);
 
   // 根据选择的章节筛选卡片
@@ -47,14 +49,14 @@ export default function StudyPage() {
   }, [selectedChapter, allCards]);
 
   // 处理评分
-  const handleRate = (rating: number) => {
+  const handleRate = async (rating: number) => {
     if (currentIndex >= dueCards.length) return;
 
     const card = dueCards[currentIndex];
     const newSRS = calculateNextReview(card, rating as ReviewRating);
 
-    // 更新卡片数据
-    updateCard(card.id, { srs: newSRS });
+    // 更新卡片数据（异步保存到本地和云端）
+    await updateCard(card.id, { srs: newSRS });
 
     // 移动到下一张
     setCompletedCount(prev => prev + 1);
