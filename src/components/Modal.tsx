@@ -213,7 +213,7 @@ function Toast({ message, type, onClose }: ToastProps) {
 }
 
 // Context 管理器
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useRef } from 'react';
 
 interface ModalContextType {
   alert: (message: string, type?: ModalType) => Promise<void>;
@@ -230,6 +230,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
     message: '',
     type: 'info'
   });
+  const alertResolveRef = useRef<(() => void) | null>(null);
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
     message: string;
@@ -242,16 +243,18 @@ export function ModalProvider({ children }: { children: ReactNode }) {
 
   const alert = useCallback((message: string, type: ModalType = 'info') => {
     return new Promise<void>((resolve) => {
+      alertResolveRef.current = resolve;
       setAlertState({ isOpen: true, message, type, title: type === 'alert' ? '警告' : '提示' });
-      // 关闭时自动 resolve
-      const checkClosed = setInterval(() => {
-        if (!alertState.isOpen) {
-          clearInterval(checkClosed);
-          resolve();
-        }
-      }, 100);
     });
-  }, [alertState.isOpen]);
+  }, []);
+
+  const handleAlertClose = useCallback(() => {
+    setAlertState((s) => ({ ...s, isOpen: false }));
+    if (alertResolveRef.current) {
+      alertResolveRef.current();
+      alertResolveRef.current = null;
+    }
+  }, []);
 
   const confirm = useCallback((message: string, title?: string) => {
     return new Promise<boolean>((resolve) => {
@@ -273,7 +276,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
       {children}
       <SimpleModal
         isOpen={alertState.isOpen}
-        onClose={() => setAlertState((s) => ({ ...s, isOpen: false }))}
+        onClose={handleAlertClose}
         message={alertState.message}
         type={alertState.type}
         title={alertState.title}
