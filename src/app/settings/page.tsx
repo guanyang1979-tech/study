@@ -8,6 +8,7 @@ import { useModal } from '@/components/Modal';
 import { getSettingsAsync, saveSettings, exportData, importData, resetData } from '@/lib/storage';
 import { Button } from '@/components/Button';
 import { AppSettings } from '@/lib/types';
+import { APP_VERSION } from '@/config/version';
 
 /**
  * 可用的中文语音列表 - 映射到可用的系统语音
@@ -108,12 +109,15 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        await importData(file);
-        await alert('导入成功！共导入了新的卡片');
-        // 刷新页面以更新显示
-        window.location.reload();
-      } catch {
-        await alert('导入失败，请检查文件格式', 'alert');
+        const result = await importData(file);
+        if (result.imported > 0) {
+          await alert(`导入成功！\n新增: ${result.imported} 张\n跳过(重复): ${result.skipped} 张`);
+          window.location.reload();
+        } else if (result.skipped > 0) {
+          await alert(`所有卡片已存在，无需导入。\n跳过: ${result.skipped} 张`, 'alert');
+        }
+      } catch (error: any) {
+        await alert(`导入失败\n${error.message || '请检查文件格式'}`, 'alert');
       }
     }
   };
@@ -392,7 +396,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-            <p>版本：1.0.0</p>
+            <p>版本：{APP_VERSION}</p>
             <p>基于艾宾浩斯遗忘曲线科学记忆</p>
             <p>帮助备考高级经济师高效复习</p>
           </div>

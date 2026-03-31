@@ -26,8 +26,8 @@ export default function StudyPage() {
   useEffect(() => {
     getCardsAsync().then(cards => {
       setAllCards(cards);
-      // 获取章节数据
-      getCardsByChapter().then(ch => setChapters(ch));
+      // 获取章节数据（传入卡片数据避免重复获取）
+      getCardsByChapter(cards).then(ch => setChapters(ch));
     });
 
     getSettingsAsync().then(settings => {

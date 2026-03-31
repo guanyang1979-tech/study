@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, ChevronDown, ChevronRight, FileText, Tag, Clock, Download, Upload, Loader2, X, ChevronUp, LayoutList, BookOpen } from 'lucide-react';
-import { getCardsAsync, getCardsByChapter, exportData, importData } from '@/lib/storage';
+import { getCardsAsync, getCardsByChapter, exportData, importData, updateCard } from '@/lib/storage';
 import { formatDate, getMemoryStatus } from '@/lib/srs';
 import { useModal } from '@/components/Modal';
 import { Button } from '@/components/Button';
@@ -20,6 +20,8 @@ export default function LibraryPage() {
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [selectedCard, setSelectedCard] = useState<FlashCard | null>(null);
   const [showCardDetail, setShowCardDetail] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<FlashCard>>({});
   const [filter, setFilter] = useState<'all' | 'new' | 'learning' | 'mastered'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -29,7 +31,7 @@ export default function LibraryPage() {
     const loadData = async () => {
       try {
         const allCards = await getCardsAsync();
-        const chapterData = await getCardsByChapter();
+        const chapterData = await getCardsByChapter(allCards); // 传递卡片数据，避免重复获取
         setCards(allCards);
         setChapters(chapterData);
         // 默认展开所有章节
@@ -98,17 +100,55 @@ export default function LibraryPage() {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        await importData(file);
+        const result = await importData(file);
         // 重新加载数据
         const allCards = await getCardsAsync();
-        const chapterData = await getCardsByChapter();
+        const chapterData = await getCardsByChapter(allCards);
         setCards(allCards);
         setChapters(chapterData);
-        await alert('导入成功！');
-      } catch (error) {
-        await alert('导入失败，请检查文件格式', 'alert');
+        if (result.imported > 0) {
+          await alert(`导入成功！\n新增: ${result.imported} 张\n跳过(重复): ${result.skipped} 张`);
+        } else if (result.skipped > 0) {
+          await alert(`所有卡片已存在，无需导入。\n跳过: ${result.skipped} 张`, 'alert');
+        }
+      } catch (error: any) {
+        await alert(`导入失败\n${error.message || '请检查文件格式'}`, 'alert');
       }
     }
+  };
+
+  // 开始编辑卡片
+  const handleEditCard = (card: FlashCard) => {
+    setEditForm({ ...card });
+    setIsEditing(true);
+  };
+
+  // 保存编辑
+  const handleSaveEdit = async () => {
+    if (!editForm.id) return;
+
+    try {
+      const updatedCards = await updateCard(editForm.id, editForm);
+      setCards(updatedCards);
+      // 重新加载章节数据
+      const chapterData = await getCardsByChapter(updatedCards);
+      setChapters(chapterData);
+      // 更新选中的卡片
+      const updated = updatedCards.find(c => c.id === editForm.id);
+      if (updated) {
+        setSelectedCard(updated);
+      }
+      setIsEditing(false);
+      await alert('保存成功！已同步到云端');
+    } catch (error) {
+      await alert('保存失败', 'alert');
+    }
+  };
+
+  // 取消编辑
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditForm({});
   };
 
   // 格式化答案文本（去除 Markdown 格式）
@@ -476,71 +516,138 @@ export default function LibraryPage() {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-2xl z-50 max-h-[60vh] overflow-y-auto"
+            className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-2xl z-50 max-h-[70vh] overflow-y-auto"
           >
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                  {selectedCard.section}
+                  {isEditing ? '' : selectedCard.section}
                 </span>
-                <button
-                  onClick={() => setSelectedCard(null)}
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
-                >
-                  <X className="w-5 h-5 text-slate-500" />
-                </button>
-              </div>
-
-              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-4">
-                {selectedCard.topic}
-              </h2>
-
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
-                  问题
-                </h3>
-                <div className="p-4 bg-blue-50 dark:bg-blue-950/50 rounded-xl text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
-                  {selectedCard.front}
+                <div className="flex gap-2">
+                  {!isEditing && (
+                    <button
+                      onClick={() => handleEditCard(selectedCard)}
+                      className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      编辑
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setSelectedCard(null); setIsEditing(false); }}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                  >
+                    <X className="w-5 h-5 text-slate-500" />
+                  </button>
                 </div>
               </div>
 
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
-                  答案
-                </h3>
-                <div className="p-4 bg-green-50 dark:bg-green-950/50 rounded-xl text-slate-800 dark:text-slate-200 whitespace-pre-wrap text-sm leading-relaxed">
-                  {formatContent(selectedCard.back)}
-                </div>
-              </div>
-
-              {selectedCard.practical_link && (
-                <div className="mb-4">
-                  <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
-                    实务思考
-                  </h3>
-                  <div className="p-4 bg-amber-50 dark:bg-amber-950/50 rounded-xl text-slate-800 dark:text-slate-200 text-sm">
-                    {selectedCard.practical_link}
+              {isEditing ? (
+                // 编辑模式
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      主题
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.topic || ''}
+                      onChange={(e) => setEditForm({ ...editForm, topic: e.target.value })}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      问题
+                    </label>
+                    <textarea
+                      value={editForm.front || ''}
+                      onChange={(e) => setEditForm({ ...editForm, front: e.target.value })}
+                      rows={2}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      答案
+                    </label>
+                    <textarea
+                      value={editForm.back || ''}
+                      onChange={(e) => setEditForm({ ...editForm, back: e.target.value })}
+                      rows={4}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      实务思考
+                    </label>
+                    <textarea
+                      value={editForm.practical_link || ''}
+                      onChange={(e) => setEditForm({ ...editForm, practical_link: e.target.value })}
+                      rows={2}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleSaveEdit}>保存</Button>
+                    <Button variant="ghost" onClick={handleCancelEdit}>取消</Button>
                   </div>
                 </div>
-              )}
+              ) : (
+                // 浏览模式
+                <>
+                  <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-4">
+                    {selectedCard.topic}
+                  </h2>
 
-              <div className="flex flex-wrap gap-2">
-                {selectedCard.tags.map((tag, idx) => (
-                  <span
-                    key={idx}
-                    className="px-3 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm text-slate-600 dark:text-slate-300"
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
+                      问题
+                    </h3>
+                    <div className="p-4 bg-blue-50 dark:bg-blue-950/50 rounded-xl text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+                      {selectedCard.front}
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
+                      答案
+                    </h3>
+                    <div className="p-4 bg-green-50 dark:bg-green-950/50 rounded-xl text-slate-800 dark:text-slate-200 whitespace-pre-wrap text-sm leading-relaxed">
+                      {formatContent(selectedCard.back)}
+                    </div>
+                  </div>
+
+                  {selectedCard.practical_link && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
+                        实务思考
+                      </h3>
+                      <div className="p-4 bg-amber-50 dark:bg-amber-950/50 rounded-xl text-slate-800 dark:text-slate-200 text-sm">
+                        {selectedCard.practical_link}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCard.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm text-slate-600 dark:text-slate-300"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedCard(null)}
+                    className="mt-4 w-full py-2 text-center text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                   >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-
-              <button
-                onClick={() => setSelectedCard(null)}
-                className="mt-4 w-full py-2 text-center text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              >
-                点击收起详情
-              </button>
+                    点击收起详情
+                  </button>
+                </>
+              )}
             </div>
           </motion.div>
         )}

@@ -15,9 +15,11 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('system');
   const [isDark, setIsDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // 初始化主题
+  // 初始化主题 - 只在客户端执行
   useEffect(() => {
+    setMounted(true);
     const savedTheme = localStorage.getItem('zhixi_theme') as Theme;
     if (savedTheme) {
       setTheme(savedTheme);
@@ -26,6 +28,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // 监听主题变化
   useEffect(() => {
+    if (!mounted) return;
+
     const updateDarkMode = () => {
       let dark = false;
       if (theme === 'system') {
@@ -49,7 +53,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     mediaQuery.addEventListener('change', handleChange);
 
     return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [theme]);
+  }, [theme, mounted]);
 
   // 保存主题设置
   const handleSetTheme = (newTheme: Theme) => {
