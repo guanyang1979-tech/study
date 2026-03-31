@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { GraduationCap, BookOpen, Clock, Trophy, ArrowRight, Sparkles, Target } from 'lucide-react';
-import { getCardsAsync } from '@/lib/storage';
+import { GraduationCap, BookOpen, Clock, Trophy, ArrowRight, Sparkles, Target, Flame, Calendar } from 'lucide-react';
+import { getCardsAsync, getTodayStats, getWeekStats, getStreakDays, getUpcomingReviews } from '@/lib/storage';
 import { getDueCards, getStudyStats } from '@/lib/srs';
 import { StatsCard } from '@/components/StatsCard';
 import { Button } from '@/components/Button';
@@ -19,12 +19,42 @@ export default function HomePage() {
     dueCards: 0,
     masteredRate: 0
   });
+  const [todayStudy, setTodayStudy] = useState({ studied: 0, remembered: 0, forgot: 0 });
+  const [weekStudy, setWeekStudy] = useState({ studied: 0, days: 0, average: 0 });
+  const [streakDays, setStreakDays] = useState(0);
+  const [upcomingReviews, setUpcomingReviews] = useState<FlashCard[]>([]);
+  const [weekReviewPlan, setWeekReviewPlan] = useState<{ date: string; count: number; dayName: string }[]>([]);
 
   useEffect(() => {
     getCardsAsync().then(allCards => {
       setCards(allCards);
       setStats(getStudyStats(allCards));
+      setUpcomingReviews(getUpcomingReviews(allCards));
+
+      // 计算本周每天需要复习的数量
+      const plan: { date: string; count: number; dayName: string }[] = [];
+      const now = new Date();
+      const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(now);
+        date.setDate(date.getDate() + i);
+        const dateStr = date.toISOString().split('T')[0];
+        const dayName = i === 0 ? '今天' : i === 1 ? '明天' : dayNames[date.getDay()];
+
+        // 统计当天需要复习的卡片数量
+        const count = allCards.filter(card => {
+          const reviewDate = new Date(card.srs.next_review_date);
+          return reviewDate.toISOString().split('T')[0] === dateStr;
+        }).length;
+
+        plan.push({ date: dateStr, count, dayName });
+      }
+      setWeekReviewPlan(plan);
     });
+    setTodayStudy(getTodayStats());
+    setWeekStudy(getWeekStats());
+    setStreakDays(getStreakDays());
   }, []);
 
   const dueCards = getDueCards(cards);
@@ -117,6 +147,123 @@ export default function HomePage() {
             subtitle={`${stats.masteredRate}% 掌握率`}
           />
         </div>
+
+        {/* 学习统计面板 */}
+        <div className="grid md:grid-cols-3 gap-4 md:gap-6 mb-8">
+          {/* 今日学习 */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Flame className="w-5 h-5 text-orange-500" />
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">今日学习</h3>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">已学习</span>
+                <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{todayStudy.studied} 张</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">记住</span>
+                <span className="text-green-600 font-semibold">{todayStudy.remembered}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">忘记</span>
+                <span className="text-red-500 font-semibold">{todayStudy.forgot}</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* 本周学习 */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="w-5 h-5 text-blue-500" />
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">本周学习</h3>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">本周已学</span>
+                <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{weekStudy.studied} 张</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">学习天数</span>
+                <span className="text-slate-800 dark:text-slate-100 font-semibold">{weekStudy.days} 天</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">日均</span>
+                <span className="text-slate-800 dark:text-slate-100 font-semibold">{weekStudy.average} 张/天</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* 连续学习 */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">学习成就</h3>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">连续学习</span>
+                <span className="text-2xl font-bold text-amber-500">{streakDays} 天</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 dark:text-slate-400">即将复习</span>
+                <span className="text-slate-800 dark:text-slate-100 font-semibold">{upcomingReviews.length} 张</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                未来3天内需要复习的卡片
+              </p>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* 本周复习日历 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg mb-8"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">本周复习计划</h3>
+            <Link href="/stats" className="text-sm text-blue-500 hover:text-blue-600">
+              查看详情 →
+            </Link>
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+            {weekReviewPlan.map((day, index) => (
+              <div
+                key={day.date}
+                className={`
+                  flex flex-col items-center p-3 rounded-xl transition-all
+                  ${day.count > 0
+                    ? 'bg-blue-50 dark:bg-blue-950/50 ' + (index <= 1 ? 'ring-2 ring-blue-500' : '')
+                    : 'bg-slate-50 dark:bg-slate-700/50'
+                  }
+                `}
+              >
+                <span className="text-xs text-slate-500 dark:text-slate-400 mb-1">{day.dayName}</span>
+                <span className={`text-lg font-bold ${day.count > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`}>
+                  {day.count}
+                </span>
+                <span className="text-xs text-slate-400">张</span>
+              </div>
+            ))}
+          </div>
+        </motion.div>
 
         {/* 快速访问区域 */}
         <div className="grid md:grid-cols-2 gap-6">

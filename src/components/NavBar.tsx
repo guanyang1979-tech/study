@@ -3,13 +3,14 @@
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BookOpen, Library, Settings, GraduationCap } from 'lucide-react';
+import { Home, BookOpen, Library, Settings, GraduationCap, BarChart3 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
 const navItems = [
   { href: '/', icon: Home, label: '首页' },
   { href: '/study', icon: GraduationCap, label: '学习' },
   { href: '/library', icon: Library, label: '知识库' },
+  { href: '/stats', icon: BarChart3, label: '统计' },
   { href: '/settings', icon: Settings, label: '设置' }
 ];
 

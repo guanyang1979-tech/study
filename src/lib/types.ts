@@ -70,3 +70,49 @@ export interface ChapterGroup {
   name: string;
   cards: FlashCard[];
 }
+
+/**
+ * 学习记录（单次学习）
+ */
+export interface StudyRecord {
+  /** 卡片ID */
+  cardId: string;
+  /** 章节名称 */
+  chapter: string;
+  /** 知识点主题 */
+  topic: string;
+  /** 评分 */
+  rating: number;
+  /** 学习日期 */
+  reviewDate: string;
+  /** 下次复习日期 */
+  nextReviewDate: string;
+  /** 响应时间（毫秒） */
+  responseTime?: number;
+}
+
+/**
+ * 每日学习统计
+ */
+export interface DailyStats {
+  /** 日期 */
+  date: string;
+  /** 学习卡片数 */
+  cardsStudied: number;
+  /** 记住数量 */
+  remembered: number;
+  /** 忘记数量 */
+  forgot: number;
+  /** 学习时长（分钟） */
+  duration: number;
+}
+
+/**
+ * 完整学习历史
+ */
+export interface StudyHistory {
+  records: StudyRecord[];
+  dailyStats: DailyStats[];
+  streakDays: number;
+  lastStudyDate: string;
+}

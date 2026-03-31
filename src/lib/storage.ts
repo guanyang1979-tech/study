@@ -1,4 +1,4 @@
-import { FlashCard, AppSettings } from './types';
+import { FlashCard, AppSettings, StudyRecord, StudyHistory, DailyStats } from './types';
 import { initialCards } from '@/data/cards';
 import { supabase } from './supabase';
 
@@ -6,7 +6,8 @@ const STORAGE_KEYS = {
   CARDS: 'zhixi_cards',
   SETTINGS: 'zhixi_settings',
   STATS: 'zhixi_stats',
-  USER_ID: 'zhixi_user_id'
+  USER_ID: 'zhixi_user_id',
+  STUDY_HISTORY: 'zhixi_study_history'
 } as const;
 
 // 默认设置
@@ -466,4 +467,170 @@ export async function getCardsByChapter(cards?: FlashCard[]): Promise<{ name: st
     name,
     cards: cards.sort((a, b) => a.importance - b.importance)
   }));
+}
+
+// ==================== 学习记录功能 ====================
+
+/**
+ * 获取学习历史
+ */
+export function getStudyHistory(): StudyHistory {
+  if (typeof window === 'undefined') {
+    return { records: [], dailyStats: [], streakDays: 0, lastStudyDate: '' };
+  }
+
+  const stored = localStorage.getItem(STORAGE_KEYS.STUDY_HISTORY);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return { records: [], dailyStats: [], streakDays: 0, lastStudyDate: '' };
+    }
+  }
+  return { records: [], dailyStats: [], streakDays: 0, lastStudyDate: '' };
+}
+
+/**
+ * 保存学习历史
+ */
+function saveStudyHistory(history: StudyHistory): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.STUDY_HISTORY, JSON.stringify(history));
+  } catch (error) {
+    console.error('保存学习历史失败:', error);
+  }
+}
+
+/**
+ * 记录单次学习
+ */
+export function recordStudy(
+  card: FlashCard,
+  rating: number,
+  responseTime?: number
+): void {
+  const history = getStudyHistory();
+  const now = new Date();
+
+  // 创建学习记录
+  const record: StudyRecord = {
+    cardId: card.id,
+    chapter: card.chapter,
+    topic: card.topic,
+    rating,
+    reviewDate: now.toISOString(),
+    nextReviewDate: card.srs.next_review_date,
+    responseTime
+  };
+
+  // 添加记录
+  history.records.push(record);
+
+  // 更新每日统计
+  const today = now.toISOString().split('T')[0];
+  let dailyStat = history.dailyStats.find(d => d.date === today);
+
+  if (!dailyStat) {
+    dailyStat = {
+      date: today,
+      cardsStudied: 0,
+      remembered: 0,
+      forgot: 0,
+      duration: 0
+    };
+    history.dailyStats.push(dailyStat);
+  }
+
+  dailyStat.cardsStudied += 1;
+  if (rating >= 3) {
+    dailyStat.remembered += 1;
+  } else {
+    dailyStat.forgot += 1;
+  }
+
+  // 计算学习时长（简化计算）
+  if (responseTime) {
+    dailyStat.duration += Math.round(responseTime / 60000);
+  }
+
+  // 更新连续学习天数
+  const lastDate = history.lastStudyDate ? new Date(history.lastStudyDate) : null;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (!lastDate) {
+    history.streakDays = 1;
+  } else if (lastDate.toISOString().split('T')[0] === yesterday.toISOString().split('T')[0]) {
+    history.streakDays += 1;
+  } else if (lastDate.toISOString().split('T')[0] !== today) {
+    history.streakDays = 1;
+  }
+
+  history.lastStudyDate = now.toISOString();
+
+  // 只保留最近365天的数据
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  history.records = history.records.filter(r => new Date(r.reviewDate) >= oneYearAgo);
+  history.dailyStats = history.dailyStats.filter(d => new Date(d.date) >= oneYearAgo);
+
+  saveStudyHistory(history);
+}
+
+/**
+ * 获取今日学习统计
+ */
+export function getTodayStats(): { studied: number; remembered: number; forgot: number } {
+  const history = getStudyHistory();
+  const today = new Date().toISOString().split('T')[0];
+  const todayStat = history.dailyStats.find(d => d.date === today);
+
+  return {
+    studied: todayStat?.cardsStudied || 0,
+    remembered: todayStat?.remembered || 0,
+    forgot: todayStat?.forgot || 0
+  };
+}
+
+/**
+ * 获取本周学习统计
+ */
+export function getWeekStats(): { studied: number; days: number; average: number } {
+  const history = getStudyHistory();
+  const now = new Date();
+  const weekAgo = new Date(now);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  const weekStats = history.dailyStats.filter(d => new Date(d.date) >= weekAgo);
+  const totalStudied = weekStats.reduce((sum, d) => sum + d.cardsStudied, 0);
+
+  return {
+    studied: totalStudied,
+    days: weekStats.length,
+    average: weekStats.length > 0 ? Math.round(totalStudied / weekStats.length) : 0
+  };
+}
+
+/**
+ * 获取连续学习天数
+ */
+export function getStreakDays(): number {
+  return getStudyHistory().streakDays;
+}
+
+/**
+ * 获取即将需要复习的卡片（未来3天）
+ */
+export function getUpcomingReviews(cards: FlashCard[]): FlashCard[] {
+  const now = new Date();
+  const threeDaysLater = new Date();
+  threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+
+  return cards.filter(card => {
+    const reviewDate = new Date(card.srs.next_review_date);
+    return reviewDate > now && reviewDate <= threeDaysLater;
+  }).sort((a, b) => {
+    return new Date(a.srs.next_review_date).getTime() - new Date(b.srs.next_review_date).getTime();
+  });
 }
