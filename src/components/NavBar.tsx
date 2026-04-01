@@ -1,10 +1,14 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BookOpen, Library, Settings, GraduationCap, BarChart3 } from 'lucide-react';
+import { Home, BookOpen, Library, Settings, GraduationCap, BarChart3, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
+import { getSubjects, getCurrentSubject, setCurrentSubjectId, addSubject, deleteSubject } from '@/lib/storage';
+import { Subject } from '@/lib/types';
+import { useModal } from './Modal';
 
 const navItems = [
   { href: '/', icon: Home, label: '首页' },
@@ -42,6 +46,9 @@ export function NavBar() {
               </p>
             </div>
           </Link>
+
+          {/* 学科选择器 */}
+          <SubjectSelector />
 
           {/* 桌面端导航 */}
           <nav className="hidden md:flex items-center gap-1">
@@ -113,6 +120,194 @@ function MobileMenu({ pathname }: { pathname: string }) {
           );
         })}
       </nav>
+    </div>
+  );
+}
+
+/**
+ * 学科选择器组件
+ */
+function SubjectSelector() {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [currentSubject, setCurrentSubjectLocal] = useState<Subject | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectDesc, setNewSubjectDesc] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { alert, confirm } = useModal();
+
+  // 加载学科数据
+  useEffect(() => {
+    loadSubjects();
+  }, []);
+
+  // 点击外部关闭下拉菜单
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setShowAddForm(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const loadSubjects = () => {
+    const allSubjects = getSubjects();
+    const current = getCurrentSubject();
+    setSubjects(allSubjects);
+    setCurrentSubjectLocal(current);
+  };
+
+  const handleSelectSubject = (subjectId: string) => {
+    setCurrentSubjectId(subjectId);
+    loadSubjects();
+    setIsOpen(false);
+  };
+
+  const handleAddSubject = async () => {
+    if (!newSubjectName.trim()) return;
+
+    const colors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+    addSubject(newSubjectName.trim(), newSubjectDesc.trim(), randomColor);
+    setNewSubjectName('');
+    setNewSubjectDesc('');
+    setShowAddForm(false);
+    loadSubjects();
+  };
+
+  const handleDeleteSubject = async (subjectId: string, subjectName: string) => {
+    if (subjects.length <= 1) {
+      await alert('无法删除最后一个学科');
+      return;
+    }
+
+    const ok = await confirm(`确定要删除学科"${subjectName}"吗？\n删除后该学科的所有卡片将无法恢复。`);
+    if (ok) {
+      deleteSubject(subjectId);
+      // 如果删除的是当前学科，切换到第一个
+      if (currentSubject?.id === subjectId && subjects.length > 1) {
+        const remaining = subjects.filter(s => s.id !== subjectId);
+        setCurrentSubjectId(remaining[0].id);
+      }
+      loadSubjects();
+    }
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      {/* 当前学科按钮 */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+      >
+        <div
+          className="w-2 h-2 rounded-full"
+          style={{ backgroundColor: currentSubject?.color || '#3B82F6' }}
+        />
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-200 max-w-[120px] truncate">
+          {currentSubject?.name || '默认学科'}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* 下拉菜单 */}
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-2 z-50"
+        >
+          <div className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+            选择学科
+          </div>
+
+          {/* 学科列表 */}
+          {subjects.map(subject => (
+            <div
+              key={subject.id}
+              className={`flex items-center justify-between px-3 py-2 mx-2 rounded-lg cursor-pointer transition-colors ${
+                currentSubject?.id === subject.id
+                  ? 'bg-blue-50 dark:bg-blue-900/30'
+                  : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              onClick={() => handleSelectSubject(subject.id)}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: subject.color }}
+                />
+                <span className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                  {subject.name}
+                </span>
+              </div>
+              {subjects.length > 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteSubject(subject.id, subject.name);
+                  }}
+                  className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+
+          {/* 添加新学科 */}
+          {showAddForm ? (
+            <div className="px-3 py-2 mt-2 border-t border-slate-200 dark:border-slate-700">
+              <input
+                type="text"
+                placeholder="学科名称"
+                value={newSubjectName}
+                onChange={e => setNewSubjectName(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 mb-2"
+                autoFocus
+              />
+              <input
+                type="text"
+                placeholder="描述（可选）"
+                value={newSubjectDesc}
+                onChange={e => setNewSubjectDesc(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 mb-2"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddSubject}
+                  className="flex-1 px-2 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                >
+                  添加
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setNewSubjectName('');
+                    setNewSubjectDesc('');
+                  }}
+                  className="flex-1 px-2 py-1.5 text-xs bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="flex items-center gap-2 w-full px-3 py-2 mt-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 border-t border-slate-200 dark:border-slate-700"
+            >
+              <Plus className="w-4 h-4" />
+              添加新学科
+            </button>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }
