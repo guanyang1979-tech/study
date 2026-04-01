@@ -17,6 +17,8 @@ export interface SRSCard {
 export interface FlashCard {
   /** 唯一标识符 */
   id: string;
+  /** 所属学科ID（可选，用于多学科支持） */
+  subjectId?: string;
   /** 章节名称 */
   chapter: string;
   /** 小节名称 */

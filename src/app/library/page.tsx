@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, ChevronDown, ChevronRight, FileText, Tag, Clock, Download, Upload, Loader2, X, ChevronUp, LayoutList, BookOpen, Sparkles } from 'lucide-react';
-import { getCardsAsync, getCardsByChapter, exportData, importData, updateCard } from '@/lib/storage';
+import { getCardsAsync, getCardsByChapter, exportData, importData, updateCard, getCurrentSubjectId, getSubjects } from '@/lib/storage';
 import { formatDate, getMemoryStatus } from '@/lib/srs';
 import { useModal } from '@/components/Modal';
 import { Button } from '@/components/Button';
@@ -25,18 +25,28 @@ export default function LibraryPage() {
   const [filter, setFilter] = useState<'all' | 'new' | 'learning' | 'mastered'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [currentSubjectId, setCurrentSubjectId] = useState<string>('default');
+  const [showSubjectSelect, setShowSubjectSelect] = useState(false);
+  const [importSubjectId, setImportSubjectId] = useState<string>('default');
 
-  // 使用 useMemo 缓存过滤后的数据
+  // 加载学科ID和加载数据
+  useEffect(() => {
+    setCurrentSubjectId(getCurrentSubjectId());
+    setImportSubjectId(getCurrentSubjectId());
+  }, []);
+
+  // 加载数据（按学科过滤）
   useEffect(() => {
     const loadData = async () => {
       try {
         const allCards = await getCardsAsync();
-        const chapterData = await getCardsByChapter(allCards); // 传递卡片数据，避免重复获取
-        setCards(allCards);
+        // 按学科过滤
+        const subjectCards = allCards.filter(c => c.subjectId === currentSubjectId);
+        const chapterData = await getCardsByChapter(subjectCards);
+        setCards(subjectCards);
         setChapters(chapterData);
-        // 默认展开所有章节
-        if (allCards.length > 0) {
-          setExpandedChapters(new Set(allCards.map(c => c.chapter)));
+        if (subjectCards.length > 0) {
+          setExpandedChapters(new Set(subjectCards.map(c => c.chapter)));
         }
       } catch (e) {
         console.error('Failed to load cards:', e);
@@ -45,7 +55,7 @@ export default function LibraryPage() {
       }
     };
     loadData();
-  }, []);
+  }, [currentSubjectId]);
 
   // 过滤卡片 - 使用 useMemo 避免重复计算
   const filteredCards = useMemo(() => {
@@ -100,11 +110,13 @@ export default function LibraryPage() {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        const result = await importData(file);
+        // 传入选中的学科ID进行导入
+        const result = await importData(file, importSubjectId);
         // 重新加载数据
         const allCards = await getCardsAsync();
-        const chapterData = await getCardsByChapter(allCards);
-        setCards(allCards);
+        const subjectCards = allCards.filter(c => c.subjectId === currentSubjectId);
+        const chapterData = await getCardsByChapter(subjectCards);
+        setCards(subjectCards);
         setChapters(chapterData);
         if (result.imported > 0) {
           await alert(`导入成功！\n新增: ${result.imported} 张\n跳过(重复): ${result.skipped} 张`);
@@ -222,6 +234,22 @@ export default function LibraryPage() {
           </p>
         </div>
 
+        {/* 学科筛选 */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-500 dark:text-slate-400">当前学科：</span>
+          <select
+            value={currentSubjectId}
+            onChange={(e) => setCurrentSubjectId(e.target.value)}
+            className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200"
+          >
+            {getSubjects().map(subject => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex flex-wrap gap-3 items-center">
           {/* 视图切换 */}
           <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
@@ -257,6 +285,21 @@ export default function LibraryPage() {
           >
             导出数据
           </Button>
+
+          {/* 导入目标学科选择 */}
+          <select
+            value={importSubjectId}
+            onChange={(e) => setImportSubjectId(e.target.value)}
+            className="px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200"
+            title="选择导入目标学科"
+          >
+            {getSubjects().map(subject => (
+              <option key={subject.id} value={subject.id}>
+                导入到: {subject.name}
+              </option>
+            ))}
+          </select>
+
           <input
             ref={fileInputRef}
             type="file"

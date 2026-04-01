@@ -120,6 +120,16 @@ async function loadFromCloud(): Promise<{ cards?: FlashCard[]; settings?: AppSet
 }
 
 /**
+ * 标准化卡片数据，确保每张卡片都有subjectId
+ */
+function normalizeCards(cards: FlashCard[]): FlashCard[] {
+  return cards.map(card => ({
+    ...card,
+    subjectId: card.subjectId || 'default'
+  }));
+}
+
+/**
  * 获取所有卡片数据（优先从云端同步，确保数据一致）
  */
 export async function getCardsAsync(): Promise<FlashCard[]> {
@@ -132,7 +142,8 @@ export async function getCardsAsync(): Promise<FlashCard[]> {
     console.log('从云端同步了', cloudData.cards.length, '张卡片');
     // 保存到本地
     localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cloudData.cards));
-    return cloudData.cards;
+    // 确保所有卡片都有subjectId
+    return normalizeCards(cloudData.cards);
   }
 
   // 云端没有数据，再检查本地
@@ -142,7 +153,8 @@ export async function getCardsAsync(): Promise<FlashCard[]> {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length > 0) {
         console.log('使用本地缓存数据:', parsed.length, '张卡片');
-        return parsed;
+        // 确保所有卡片都有subjectId
+        return normalizeCards(parsed);
       }
     } catch (error) {
       console.error('解析本地数据失败:', error);
@@ -320,9 +332,12 @@ function isCardContentSame(card1: FlashCard, card2: FlashCard): boolean {
 
 /**
  * 从 JSON 文件导入数据
+ * @param file JSON文件
+ * @param subjectId 导入目标学科ID（如果不传则使用当前学科）
  */
-export async function importData(file: File): Promise<{ imported: number; skipped: number; errors: string[] }> {
+export async function importData(file: File, subjectId?: string): Promise<{ imported: number; skipped: number; errors: string[] }> {
   const result = { imported: 0, skipped: 0, errors: [] as string[] };
+  const targetSubjectId = subjectId || getCurrentSubjectId();
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -339,6 +354,7 @@ export async function importData(file: File): Promise<{ imported: number; skippe
           // 纯数组格式
           cardsToImport = data.map((card: any) => ({
             ...card,
+            subjectId: targetSubjectId, // 强制设置学科ID
             srs: card.srs || {
               repetition: 0,
               interval: 0,
@@ -348,7 +364,10 @@ export async function importData(file: File): Promise<{ imported: number; skippe
           }));
         } else if (data.cards && Array.isArray(data.cards)) {
           // 完整备份格式
-          cardsToImport = data.cards;
+          cardsToImport = data.cards.map((card: any) => ({
+            ...card,
+            subjectId: targetSubjectId // 强制设置学科ID
+          }));
           if (data.settings) {
             await saveSettings(data.settings).catch(() => {});
           }
@@ -774,6 +793,18 @@ export function addSubject(name: string, description: string, color: string): Su
 export function deleteSubject(subjectId: string): void {
   const subjects = getSubjects().filter(s => s.id !== subjectId);
   saveSubjects(subjects);
+}
+
+/**
+ * 更新学科信息
+ */
+export function updateSubject(subjectId: string, updates: Partial<Pick<Subject, 'name' | 'description' | 'color'>>): void {
+  const subjects = getSubjects();
+  const index = subjects.findIndex(s => s.id === subjectId);
+  if (index !== -1) {
+    subjects[index] = { ...subjects[index], ...updates };
+    saveSubjects(subjects);
+  }
 }
 
 /**
