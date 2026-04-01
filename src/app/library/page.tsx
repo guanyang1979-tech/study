@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, ChevronDown, ChevronRight, FileText, Tag, Clock, Download, Upload, Loader2, X, ChevronUp, LayoutList, BookOpen } from 'lucide-react';
+import { Search, Filter, ChevronDown, ChevronRight, FileText, Tag, Clock, Download, Upload, Loader2, X, ChevronUp, LayoutList, BookOpen, Sparkles } from 'lucide-react';
 import { getCardsAsync, getCardsByChapter, exportData, importData, updateCard } from '@/lib/storage';
 import { formatDate, getMemoryStatus } from '@/lib/srs';
 import { useModal } from '@/components/Modal';
@@ -212,7 +212,7 @@ export default function LibraryPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* 页面标题 */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
             知识库
@@ -272,6 +272,23 @@ export default function LibraryPage() {
           >
             导入数据
           </Button>
+        </div>
+      </div>
+
+      {/* 多学科提示 */}
+      <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-800">
+        <div className="flex items-start gap-3">
+          <div className="p-1.5 bg-blue-500 rounded-lg mt-0.5">
+            <Sparkles className="w-4 h-4 text-white" />
+          </div>
+          <div className="text-sm">
+            <p className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+              支持多学科管理
+            </p>
+            <p className="text-blue-700 dark:text-blue-300">
+              导入卡片时会自动导入到当前选中的学科。点击首页顶部的学科名称可以切换当前学习科目，不同学科的卡片和学习进度相互独立。
+            </p>
+          </div>
         </div>
       </div>
 

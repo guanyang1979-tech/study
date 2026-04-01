@@ -390,6 +390,21 @@ export default function HomePage() {
             </div>
           </div>
         </motion.div>
+
+        {/* 注意事项 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-sm text-slate-500 dark:text-slate-400"
+        >
+          <p className="mb-1">
+            <strong>注意：</strong>由于云端数据库托管在海外，访问网站需要开启 VPN。
+          </p>
+          <p>
+            学习记录保存在本地浏览器，更换设备后不会同步。
+          </p>
+        </motion.div>
       </div>
     </div>
   );
