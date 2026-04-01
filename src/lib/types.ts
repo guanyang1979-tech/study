@@ -116,3 +116,37 @@ export interface StudyHistory {
   streakDays: number;
   lastStudyDate: string;
 }
+
+/**
+ * 错题本记录
+ */
+export interface WrongNote {
+  /** 卡片ID */
+  cardId: string;
+  /** 错误次数 */
+  wrongCount: number;
+  /** 上次错误日期 */
+  lastWrongDate: string;
+  /** 连续正确次数 */
+  correctCount: number;
+  /** 加入错题本日期 */
+  addedDate: string;
+  /** 学科ID */
+  subjectId: string;
+}
+
+/**
+ * 学科/科目
+ */
+export interface Subject {
+  /** 学科ID */
+  id: string;
+  /** 学科名称 */
+  name: string;
+  /** 描述 */
+  description: string;
+  /** 主题色 */
+  color: string;
+  /** 创建时间 */
+  createdAt: string;
+}

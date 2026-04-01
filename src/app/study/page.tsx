@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Volume2, VolumeX, Trophy, RefreshCw, X, BookOpen, Clock, ChevronLeft } from 'lucide-react';
-import { getCardsAsync, updateCard, getSettingsAsync, getCardsByChapter, recordStudy } from '@/lib/storage';
+import { getCardsAsync, updateCard, getSettingsAsync, getCardsByChapter, recordStudy, recordWrongAnswer, recordCorrectAnswer, getCurrentSubjectId } from '@/lib/storage';
 import { getDueCards, calculateNextReview, ReviewRating, getStudyStats } from '@/lib/srs';
 import { StudyCard } from '@/components/StudyCard';
 import { Button } from '@/components/Button';
@@ -57,6 +57,16 @@ export default function StudyPage() {
 
     // 记录学习（同步到云端将在后台进行）
     recordStudy(card, rating);
+
+    // 记录错题本
+    const subjectId = getCurrentSubjectId();
+    if (rating < 3) {
+      // 答错，记录到错题本
+      recordWrongAnswer(card.id, subjectId);
+    } else {
+      // 答对，更新错题本状态
+      recordCorrectAnswer(card.id);
+    }
 
     // 更新卡片数据（异步保存到本地和云端）
     await updateCard(card.id, { srs: newSRS });

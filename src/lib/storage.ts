@@ -1,4 +1,4 @@
-import { FlashCard, AppSettings, StudyRecord, StudyHistory, DailyStats } from './types';
+import { FlashCard, AppSettings, StudyRecord, StudyHistory, DailyStats, WrongNote, Subject } from './types';
 import { initialCards } from '@/data/cards';
 import { supabase } from './supabase';
 
@@ -7,7 +7,10 @@ const STORAGE_KEYS = {
   SETTINGS: 'zhixi_settings',
   STATS: 'zhixi_stats',
   USER_ID: 'zhixi_user_id',
-  STUDY_HISTORY: 'zhixi_study_history'
+  STUDY_HISTORY: 'zhixi_study_history',
+  WRONG_NOTES: 'zhixi_wrong_notes',
+  SUBJECTS: 'zhixi_subjects',
+  CURRENT_SUBJECT: 'zhixi_current_subject'
 } as const;
 
 // 默认设置
@@ -633,4 +636,173 @@ export function getUpcomingReviews(cards: FlashCard[]): FlashCard[] {
   }).sort((a, b) => {
     return new Date(a.srs.next_review_date).getTime() - new Date(b.srs.next_review_date).getTime();
   });
+}
+
+// ==================== 错题本功能 ====================
+
+/**
+ * 获取错题本
+ */
+export function getWrongNotes(): WrongNote[] {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem(STORAGE_KEYS.WRONG_NOTES);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * 保存错题本
+ */
+function saveWrongNotes(notes: WrongNote[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.WRONG_NOTES, JSON.stringify(notes));
+}
+
+/**
+ * 记录错误（答错时调用）
+ */
+export function recordWrongAnswer(cardId: string, subjectId: string): void {
+  const notes = getWrongNotes();
+  const existing = notes.find(n => n.cardId === cardId);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    existing.wrongCount += 1;
+    existing.lastWrongDate = now;
+    existing.correctCount = 0; // 重置连续正确次数
+  } else {
+    notes.push({
+      cardId,
+      wrongCount: 1,
+      lastWrongDate: now,
+      correctCount: 0,
+      addedDate: now,
+      subjectId
+    });
+  }
+
+  saveWrongNotes(notes);
+}
+
+/**
+ * 记录正确（答对时调用）
+ */
+export function recordCorrectAnswer(cardId: string): void {
+  const notes = getWrongNotes();
+  const existing = notes.find(n => n.cardId === cardId);
+
+  if (existing) {
+    existing.correctCount += 1;
+    // 连续答对3次后移除
+    if (existing.correctCount >= 3) {
+      const newNotes = notes.filter(n => n.cardId !== cardId);
+      saveWrongNotes(newNotes);
+      return;
+    }
+    saveWrongNotes(notes);
+  }
+}
+
+/**
+ * 获取错题卡片
+ */
+export function getWrongNoteCards(cards: FlashCard[]): FlashCard[] {
+  const notes = getWrongNotes();
+  const wrongIds = new Set(notes.map(n => n.cardId));
+  return cards.filter(card => wrongIds.has(card.id));
+}
+
+// ==================== 多学科功能 ====================
+
+/**
+ * 获取所有学科
+ */
+export function getSubjects(): Subject[] {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem(STORAGE_KEYS.SUBJECTS);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return [];
+    }
+  }
+  // 返回默认学科
+  return [{
+    id: 'default',
+    name: '默认学科',
+    description: '默认学习科目',
+    color: '#3B82F6',
+    createdAt: new Date().toISOString()
+  }];
+}
+
+/**
+ * 保存学科列表
+ */
+function saveSubjects(subjects: Subject[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(subjects));
+}
+
+/**
+ * 添加学科
+ */
+export function addSubject(name: string, description: string, color: string): Subject {
+  const subjects = getSubjects();
+  const newSubject: Subject = {
+    id: 'subject_' + Date.now(),
+    name,
+    description,
+    color,
+    createdAt: new Date().toISOString()
+  };
+  subjects.push(newSubject);
+  saveSubjects(subjects);
+  return newSubject;
+}
+
+/**
+ * 删除学科
+ */
+export function deleteSubject(subjectId: string): void {
+  const subjects = getSubjects().filter(s => s.id !== subjectId);
+  saveSubjects(subjects);
+}
+
+/**
+ * 获取当前学科
+ */
+export function getCurrentSubjectId(): string {
+  if (typeof window === 'undefined') return 'default';
+  return localStorage.getItem(STORAGE_KEYS.CURRENT_SUBJECT) || 'default';
+}
+
+/**
+ * 设置当前学科
+ */
+export function setCurrentSubjectId(subjectId: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.CURRENT_SUBJECT, subjectId);
+}
+
+/**
+ * 获取当前学科信息
+ */
+export function getCurrentSubject(): Subject {
+  const subjects = getSubjects();
+  const currentId = getCurrentSubjectId();
+  return subjects.find(s => s.id === currentId) || subjects[0] || {
+    id: 'default',
+    name: '默认学科',
+    description: '默认学习科目',
+    color: '#3B82F6',
+    createdAt: new Date().toISOString()
+  };
 }
