@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(cargo --version)",
+      "Bash(npm install:*)",
+      "Bash(npm config:*)",
+      "Bash(rm -rf node_modules package-lock.json)",
+      "Bash(export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/)",
+      "Bash(timeout 30 npm run dev)",
+      "Bash(node node_modules/electron/install.js)",
+      "Bash(rm -rf dist-electron)",
+      "Bash(timeout 35 npm run dev)",
+      "Bash(npx esbuild:*)",
+      "Bash(timeout 40 npm run dev)",
+      "Bash(timeout 45 npm run dev)",
+      "Bash(ls -la d:/cc-projects/projects/knowledge-base/node_modules/electron/dist/*.exe)",
+      "Bash(./node_modules/electron/dist/electron.exe --version)",
+      "Bash(node -e \"const { app } = require\\(''electron''\\); console.log\\(typeof app\\)\")",
+      "Bash(timeout 15 node_modules/.bin/electron .)",
+      "Bash(node -e \"console.log\\(process.versions\\)\")",
+      "Bash(npm list:*)",
+      "Bash(node_modules/electron/dist/electron.exe --version)",
+      "Bash(node test-electron.js)",
+      "Bash(timeout 10 node_modules/electron/dist/electron.exe test-globals.js)",
+      "Bash(timeout 10 node_modules/electron/dist/electron.exe --require ./preload-main.js .)",
+      "Bash(node -e \":*)",
+      "Bash(rm -rf dist dist-electron release)",
+      "Bash(npm run:*)",
+      "Bash(npx electron-builder:*)",
+      "Bash(rm -rf release)",
+      "Bash(export CSC_IDENTITY_AUTO_DISCOVERY=false)",
+      "Bash(export WIN_CSC_LINK=\"\")",
+      "Bash(export GH_TOKEN=\"\")",
+      "Bash(export electron-builder_win=\"C:\\\\Users\\\\12792\\\\AppData\\\\Local\\\\electron-builder\\\\Cache\\\\winCodeSign\")"
+    ],
+    "additionalDirectories": [
+      "d:\\cc-projects\\projects\\knowledge-base"
+    ]
+  }
+}

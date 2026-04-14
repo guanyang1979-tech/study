@@ -10,8 +10,23 @@ const STORAGE_KEYS = {
   STUDY_HISTORY: 'zhixi_study_history',
   WRONG_NOTES: 'zhixi_wrong_notes',
   SUBJECTS: 'zhixi_subjects',
-  CURRENT_SUBJECT: 'zhixi_current_subject'
+  CURRENT_SUBJECT: 'zhixi_current_subject',
+  SYNC_META: 'zhixi_sync_meta'
 } as const;
+
+/**
+ * 同步元数据结构
+ */
+interface SyncMeta {
+  /** 本地数据最后更新时间 */
+  local_updated_at: string | null;
+  /** 云端数据最后更新时间 */
+  cloud_updated_at: string | null;
+  /** 最后同步到云端的时间 */
+  last_synced_at: string | null;
+  /** 最后从云端拉取的时间 */
+  last_pulled_at: string | null;
+}
 
 // 默认设置
 const defaultSettings: AppSettings = {
@@ -57,6 +72,52 @@ function getUserId(): string {
   }
 }
 
+// ==================== 同步元数据管理 ====================
+
+/**
+ * 获取同步元数据
+ */
+function getSyncMeta(): SyncMeta {
+  if (typeof window === 'undefined') {
+    return { local_updated_at: null, cloud_updated_at: null, last_synced_at: null, last_pulled_at: null };
+  }
+  const stored = localStorage.getItem(STORAGE_KEYS.SYNC_META);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return { local_updated_at: null, cloud_updated_at: null, last_synced_at: null, last_pulled_at: null };
+    }
+  }
+  return { local_updated_at: null, cloud_updated_at: null, last_synced_at: null, last_pulled_at: null };
+}
+
+/**
+ * 保存同步元数据
+ */
+function saveSyncMeta(meta: Partial<SyncMeta>): void {
+  if (typeof window === 'undefined') return;
+  const current = getSyncMeta();
+  const updated = { ...current, ...meta };
+  localStorage.setItem(STORAGE_KEYS.SYNC_META, JSON.stringify(updated));
+}
+
+/**
+ * 更新本地数据时间戳
+ */
+function touchLocalTimestamp(): void {
+  saveSyncMeta({ local_updated_at: new Date().toISOString() });
+}
+
+/**
+ * 从 localStorage 获取设置（同步方法，供异步函数使用）
+ */
+function getSettingsFromStorage(): AppSettings {
+  if (typeof window === 'undefined') return defaultSettings;
+  const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+  return stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
+}
+
 // 同步数据到云端
 async function syncToCloud(cards: FlashCard[], settings: AppSettings) {
   if (typeof window === 'undefined') return;
@@ -83,7 +144,7 @@ async function syncToCloud(cards: FlashCard[], settings: AppSettings) {
 }
 
 // 从云端加载数据
-async function loadFromCloud(): Promise<{ cards?: FlashCard[]; settings?: AppSettings } | null> {
+async function loadFromCloud(): Promise<{ cards?: FlashCard[]; settings?: AppSettings; updated_at?: string } | null> {
   if (typeof window === 'undefined') return null;
 
   const userId = getUserId();
@@ -92,7 +153,7 @@ async function loadFromCloud(): Promise<{ cards?: FlashCard[]; settings?: AppSet
   try {
     const { data, error } = await supabase
       .from('user_data')
-      .select('cards, settings')
+      .select('cards, settings, updated_at')
       .eq('user_id', userId)
       .single();
 
@@ -111,8 +172,8 @@ async function loadFromCloud(): Promise<{ cards?: FlashCard[]; settings?: AppSet
       return null;
     }
 
-    console.log('从云端加载了', data.cards?.length, '张卡片');
-    return { cards: data.cards, settings: data.settings };
+    console.log('从云端加载了', data.cards?.length, '张卡片, updated_at:', data.updated_at);
+    return { cards: data.cards, settings: data.settings, updated_at: data.updated_at };
   } catch (error) {
     console.error('从云端加载异常:', error);
     return null;
@@ -130,55 +191,118 @@ function normalizeCards(cards: FlashCard[]): FlashCard[] {
 }
 
 /**
- * 获取所有卡片数据（优先从云端同步，确保数据一致）
+ * 获取所有卡片数据
+ * 同时检查本地和云端，按时间戳合并，保证数据一致性
  */
 export async function getCardsAsync(): Promise<FlashCard[]> {
   if (typeof window === 'undefined') return initialCards;
 
-  // 先尝试从云端获取最新数据
-  console.log('检查云端数据...');
+  const syncMeta = getSyncMeta();
+  const localStored = localStorage.getItem(STORAGE_KEYS.CARDS);
+  const localCards = localStored ? JSON.parse(localStored) : null;
+
+  // 并行加载云端数据
   const cloudData = await loadFromCloud();
-  if (cloudData?.cards && Array.isArray(cloudData.cards) && cloudData.cards.length > 0) {
-    console.log('从云端同步了', cloudData.cards.length, '张卡片');
-    // 保存到本地
-    localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cloudData.cards));
-    // 确保所有卡片都有subjectId
-    return normalizeCards(cloudData.cards);
-  }
 
-  // 云端没有数据，再检查本地
-  const stored = localStorage.getItem(STORAGE_KEYS.CARDS);
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        console.log('使用本地缓存数据:', parsed.length, '张卡片');
-        // 确保所有卡片都有subjectId
-        return normalizeCards(parsed);
-      }
-    } catch (error) {
-      console.error('解析本地数据失败:', error);
-      localStorage.removeItem(STORAGE_KEYS.CARDS);
+  // 比较时间戳决定使用哪个版本
+  const localTime = syncMeta.local_updated_at ? new Date(syncMeta.local_updated_at).getTime() : 0;
+  const cloudTime = cloudData?.updated_at ? new Date(cloudData.updated_at).getTime() : 0;
+
+  let finalCards: FlashCard[];
+  let needSyncToCloud = false;
+  let needSyncToLocal = false;
+
+  if (localCards && localCards.length > 0 && cloudData?.cards && cloudData.cards.length > 0) {
+    // 两边都有数据，按时间戳比较
+    if (localTime >= cloudTime) {
+      console.log('本地数据更新（本地:', syncMeta.local_updated_at, 'vs 云端:', cloudData.updated_at, '）');
+      finalCards = localCards;
+      needSyncToCloud = true; // 本地更新，需要同步到云端
+    } else {
+      console.log('云端数据更新（本地:', syncMeta.local_updated_at, 'vs 云端:', cloudData.updated_at, '）');
+      finalCards = cloudData.cards;
+      needSyncToLocal = true; // 云端更新，需要同步到本地
     }
+  } else if (localCards && localCards.length > 0) {
+    // 只有本地有数据
+    console.log('只有本地有数据:', localCards.length, '张');
+    finalCards = localCards;
+    needSyncToCloud = true;
+  } else if (cloudData?.cards && cloudData.cards.length > 0) {
+    // 只有云端有数据
+    console.log('只有云端有数据:', cloudData.cards.length, '张');
+    finalCards = cloudData.cards;
+    needSyncToLocal = true;
+  } else {
+    // 两边都没有数据，使用初始数据
+    console.log('使用初始卡片数据');
+    return initialCards;
   }
 
-  // 使用初始数据
-  return initialCards;
+  // 执行必要的同步
+  if (needSyncToCloud) {
+    // 本地更新，同步到云端
+    const settings = getSettingsFromStorage();
+    syncToCloudAsync(finalCards, settings, true).catch(err => console.error('云端同步失败:', err));
+  }
+  if (needSyncToLocal && cloudData?.updated_at) {
+    // 云端更新，保存到本地
+    localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(finalCards));
+    // 拉取了云端数据后，本地数据时间戳与云端一致
+    saveSyncMeta({ cloud_updated_at: cloudData.updated_at, last_pulled_at: new Date().toISOString() });
+  }
+
+  return normalizeCards(finalCards);
+}
+
+/**
+ * 异步同步到云端（不阻塞主流程）
+ * @param cards 卡片数据
+ * @param settings 应用设置
+ * @param isUserInitiated 是否用户主动触发的同步（用于日志区分）
+ */
+async function syncToCloudAsync(cards: FlashCard[], settings: AppSettings, isUserInitiated = false): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  const userId = getUserId();
+  const prefix = isUserInitiated ? '主动同步到云端' : '后台同步到云端';
+  console.log(prefix + ', userId:', userId, 'cards数量:', cards.length);
+
+  try {
+    const { error } = await supabase.from('user_data').upsert({
+      user_id: userId,
+      cards: cards,
+      settings: settings,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+
+    if (error) {
+      console.error('云端同步失败:', error);
+    } else {
+      console.log('云端同步成功');
+      saveSyncMeta({ last_synced_at: new Date().toISOString() });
+    }
+  } catch (error) {
+    console.error('云端同步异常:', error);
+  }
 }
 
 /**
  * 保存卡片数据
+ * 本地保存优先，云端同步不阻塞主流程
  */
 export async function saveCards(cards: FlashCard[]): Promise<void> {
   if (typeof window === 'undefined') return;
 
   try {
-    // 保存到本地存储
+    // 保存到本地存储（同步完成）
     localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
-    // 同时同步到云端
-    const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const settings = stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
-    await syncToCloud(cards, settings);
+    touchLocalTimestamp(); // 更新本地时间戳
+    console.log('卡片已保存到本地:', cards.length, '张');
+
+    // 异步同步到云端（不阻塞）
+    const settings = getSettingsFromStorage();
+    syncToCloudAsync(cards, settings).catch(err => console.error('云端同步失败:', err));
   } catch (error) {
     console.error('保存卡片失败:', error);
   }
@@ -232,14 +356,17 @@ export async function getSettingsAsync(): Promise<AppSettings> {
 
 /**
  * 保存应用设置
+ * 本地保存优先，云端同步不阻塞
  */
 export async function saveSettings(settings: AppSettings): Promise<void> {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+  touchLocalTimestamp(); // 更新本地时间戳
 
-  // 同步到云端
-  const cards = await getCardsAsync();
-  await syncToCloud(cards, settings);
+  // 异步同步到云端（不阻塞），直接从 localStorage 读取卡片
+  const stored = localStorage.getItem(STORAGE_KEYS.CARDS);
+  const cards = stored ? JSON.parse(stored) : [];
+  syncToCloudAsync(cards, settings).catch(err => console.error('云端同步失败:', err));
 }
 
 /**
